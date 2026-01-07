@@ -6,7 +6,7 @@ image: myosa-cover-image.jpg
 Tags: 
   - #TrackBot
   - #SmartRailwayAutomation
-  - #Safe Rails 
+  - #SafeRails 
   - #MYOSA4_0
 Tagline: An autonomous, sensor-driven robot that inspects, analyzes, and repairs railway tracks in real time to ensure safer and smarter railways.
 Acknowledgements: 
@@ -223,4 +223,5 @@ Once all components are tested and working correctly, the robot is ready for:
 
 # Environment / Setup Requirements
 - Laptop or PC – To run the dashboard and Python scripts for data processing.  
+
 - Stable Wi-Fi Connection – For wireless data transmission between ESP32 and dashboard.
