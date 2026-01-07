@@ -8,7 +8,7 @@ Tags:
   - #SmartRailwayAutomation
   - #SafeRails 
   - #MYOSA4_0
-Tagline: An autonomous, sensor-driven robot that inspects, analyzes, and repairs railway tracks in real time to ensure safer and smarter railways.
+Tagline: "Sensorially guarding every inch of the track."
 Acknowledgements: 
   We express our sincere gratitude to our Faculty Mentor, Dr. Raman Kumar, for his guidance and
   technical support throughout the project. We thank the Department of Electronics and
@@ -225,3 +225,4 @@ Once all components are tested and working correctly, the robot is ready for:
 - Laptop or PC – To run the dashboard and Python scripts for data processing.  
 
 - Stable Wi-Fi Connection – For wireless data transmission between ESP32 and dashboard.
+
