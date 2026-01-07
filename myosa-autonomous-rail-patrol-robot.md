@@ -113,179 +113,168 @@ The robot intelligently identifies track defects, distinguishes between minor an
 5.  For major defects, the robot stops and sends an alert to authorities.
 # Code used
 #include <myosa.h>
-#include <WiFi.h>
-#include <HTTPClient.h>
-#include <ESP32Servo.h>
 #include <Wire.h>
-#include "MPU6050.h"
-#include <TinyGPSPlus.h"
+#include <ESP32Servo.h>
+#include <TinyGPS++.h>
+// I2C sensors
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_TCS34725.h>
+#include <Adafruit_BMP280.h>
+#include <Adafruit_SSD1306.h>
 
-/* ================= PIN CONFIG ================= */
-// Sensors
-#define IR_SENSOR 34
+// ---------------- PIN DEFINITIONS ----------------
+#define IN1 25
+#define IN2 26
+#define ENA 27
 
-// Motors
-#define MOTOR_L1 14
-#define MOTOR_L2 27
-#define MOTOR_R1 26
-#define MOTOR_R2 25
+#define IR1 34
+#define IR2 35
 
-// Robotic Arm (2 Servos)
-#define SERVO_BASE 13
-#define SERVO_ARM 12
+#define BUZZER 18
+#define LED 19
 
-// Safety & Status
-#define BUZZER 33
-#define STATUS_LED 2        // ESP32 onboard LED
-#define EMERGENCY_BTN 32    // Manual emergency stop
+#define SERVO_PIN 23
 
-// GPS
-#define GPS_RX 16
-#define GPS_TX 17
-
-/* ================= WIFI ================= */
-const char* ssid = "YOUR_WIFI_NAME";
-const char* password = "YOUR_WIFI_PASSWORD";
-const char* serverURL = "http://YOUR_PC_IP:5000/data";
-
-/* ================= OBJECTS ================= */
-Servo servoBase, servoArm;
-MPU6050 mpu;
+// ---------------- OBJECTS ----------------
+Servo arm;
 TinyGPSPlus gps;
-HardwareSerial gpsSerial(2);
+HardwareSerial gpsSerial(0);
 
-/* ================= SAFETY FLAGS ================= */
-bool emergencyStop = false;
+Adafruit_MPU6050 mpu;
+Adafruit_TCS34725 rgb(TCS34725_INTEGRATIONTIME_50MS, TCS34725_GAIN_4X);
+Adafruit_BMP280 bmp;
+Adafruit_SSD1306 display(128, 64, &Wire, -1);
 
-/* ================= SETUP ================= */
+// ---------------- MOTOR FUNCTIONS ----------------
+void moveForward() {
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+  analogWrite(ENA, 200);
+}
+
+void stopMotor() {
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, LOW);
+}
+
+// ---------------- SETUP ----------------
 void setup() {
   Serial.begin(9600);
+  gpsSerial.begin(9600);
 
-  pinMode(IR_SENSOR, INPUT);
-  pinMode(EMERGENCY_BTN, INPUT_PULLUP);
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(ENA, OUTPUT);
 
-  pinMode(MOTOR_L1, OUTPUT);
-  pinMode(MOTOR_L2, OUTPUT);
-  pinMode(MOTOR_R1, OUTPUT);
-  pinMode(MOTOR_R2, OUTPUT);
+  pinMode(IR1, INPUT);
+  pinMode(IR2, INPUT);
 
   pinMode(BUZZER, OUTPUT);
-  pinMode(STATUS_LED, OUTPUT);
+  pinMode(LED, OUTPUT);
 
-  servoBase.attach(SERVO_BASE);
-  servoArm.attach(SERVO_ARM);
-  servoBase.write(0);
-  servoArm.write(0);
+  arm.attach(SERVO_PIN);
+  arm.write(0);
 
   Wire.begin();
-  mpu.initialize();
 
-  gpsSerial.begin(9600, SERIAL_8N1, GPS_RX, GPS_TX);
+  // Initialize sensors
+  mpu.begin();
+  rgb.begin();
+  bmp.begin(0x76);
 
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    digitalWrite(STATUS_LED, !digitalRead(STATUS_LED));
-    delay(500);
-  }
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  display.clearDisplay();
 
-  digitalWrite(STATUS_LED, HIGH); // System ready
+  moveForward();
 }
 
-/* ================= MOVEMENT ================= */
-void moveForward() {
-  digitalWrite(MOTOR_L1, HIGH);
-  digitalWrite(MOTOR_L2, LOW);
-  digitalWrite(MOTOR_R1, HIGH);
-  digitalWrite(MOTOR_R2, LOW);
-}
-
-void stopRobot() {
-  digitalWrite(MOTOR_L1, LOW);
-  digitalWrite(MOTOR_L2, LOW);
-  digitalWrite(MOTOR_R1, LOW);
-  digitalWrite(MOTOR_R2, LOW);
-}
-
-/* ================= ROBOTIC ARM ================= */
-void fixMinorDefect() {
-  servoBase.write(90);
-  delay(800);
-  servoArm.write(90);
-  delay(1500);
-  servoArm.write(0);
-  delay(800);
-  servoBase.write(0);
-}
-
-/* ================= DASHBOARD DATA ================= */
-void sendData(String defect, String severity, float lat, float lon) {
-  if (WiFi.status() == WL_CONNECTED) {
-    HTTPClient http;
-    http.begin(serverURL);
-    http.addHeader("Content-Type", "application/json");
-
-    String payload = "{";
-    payload += "\"defect\":\"" + defect + "\",";
-    payload += "\"severity\":\"" + severity + "\",";
-    payload += "\"latitude\":" + String(lat, 6) + ",";
-    payload += "\"longitude\":" + String(lon, 6);
-    payload += "}";
-
-    http.POST(payload);
-    http.end();
-  }
-}
-
-/* ================= EMERGENCY HANDLER ================= */
-void handleEmergencyStop() {
-  stopRobot();
-  digitalWrite(BUZZER, HIGH);
-  digitalWrite(STATUS_LED, LOW);
-  sendData("Manual Emergency Stop", "Critical", 0.0, 0.0);
-  while (1);   // MYOSA-safe halt
-}
-
-/* ================= MAIN LOOP ================= */
+// ---------------- LOOP ----------------
 void loop() {
 
-  // Manual emergency stop (MYOSA safety)
-  if (digitalRead(EMERGENCY_BTN) == LOW) {
-    handleEmergencyStop();
-  }
-
-  // GPS Read
+  // Read GPS
   while (gpsSerial.available()) {
     gps.encode(gpsSerial.read());
   }
 
-  float latitude = gps.location.isValid() ? gps.location.lat() : 0.0;
-  float longitude = gps.location.isValid() ? gps.location.lng() : 0.0;
+  // Read Accelerometer
+  sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
 
-  moveForward();
+  // Read RGB
+  uint16_t r, g_col, b, c;
+  rgb.getRawData(&r, &g_col, &b, &c);
 
-  int irValue = digitalRead(IR_SENSOR);
+  // Read Altitude
+  float altitude = bmp.readAltitude(1013.25);
 
-  int16_t ax, ay, az;
-  mpu.getAcceleration(&ax, &ay, &az);
-  float vibration = abs(ax) + abs(ay);
+  // Display data
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
 
-  // -------- MINOR DEFECT --------
-  if (irValue == LOW && vibration < 15000) {
-    stopRobot();
-    sendData("Minor crack / Loose fastener", "Low", latitude, longitude);
-    fixMinorDefect();
+  display.setCursor(0, 0);
+  display.print("Alt: ");
+  display.print(altitude);
+
+  display.setCursor(0, 10);
+  display.print("AccX:");
+  display.print(a.acceleration.x);
+
+  display.setCursor(0, 20);
+  display.print("RGB:");
+  display.print(r); display.print(",");
+  display.print(g_col); display.print(",");
+  display.print(b);
+
+  display.display();
+
+  // Crack detection
+  if (digitalRead(IR1) == LOW || digitalRead(IR2) == LOW) {
+
+    stopMotor();
+
+    // Alert
+    for (int i = 0; i < 4; i++) {
+      digitalWrite(BUZZER, HIGH);
+      digitalWrite(LED, HIGH);
+      delay(300);
+      digitalWrite(BUZZER, LOW);
+      digitalWrite(LED, LOW);
+      delay(300);
+    }
+
+    // GPS location
+    if (gps.location.isValid()) {
+      Serial.print("LAT: ");
+      Serial.println(gps.location.lat(), 6);
+      Serial.print("LON: ");
+      Serial.println(gps.location.lng(), 6);
+    }
+
+    delay(5000);
+
+    // Move forward 30cm
+    moveForward();
+    delay(800);
+    stopMotor();
+
+    // Servo maintenance sequence
+    arm.write(90);
     delay(1500);
-  }
 
-  // -------- MAJOR DEFECT (FAIL-SAFE) --------
-  else if (vibration >= 15000) {
-    stopRobot();
-    digitalWrite(BUZZER, HIGH);
-    sendData("Major crack / Track damage", "High", latitude, longitude);
-    while (1);   // MYOSA-compliant safe stop
-  }
+    arm.write(45);
+    delay(1000);
 
-  delay(400);
+    arm.write(90);
+    delay(1500);
+
+    arm.write(0);
+    delay(1000);
+
+    moveForward();
+  }
+}
 # Tech stack
 ## 1. MYOSA Motherboard – ESP32
 The ESP32 MYOSA motherboard is the brain of your robot. It controls all the sensors and actuators, processes the data, and communicates with the dashboard via Wi-Fi. All other components connect to it, making it the central control unit.
@@ -399,6 +388,7 @@ Once all components are tested and working correctly, the robot is ready for:
 - Laptop or PC – To run the dashboard and Python scripts for data processing.  
 
 - Stable Wi-Fi Connection – For wireless data transmission between ESP32 and dashboard.
+
 
 
 
