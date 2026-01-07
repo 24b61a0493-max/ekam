@@ -10,7 +10,7 @@ Tags:
   - #MYOSA4_0
 Tagline: "Sensorially guarding every inch of the track."
 Acknowledgements: 
-  We express our sincere gratitude to our Faculty Mentor, Dr. Raman Kumar, for his guidance and
+  We express our sincere gratitude to our Faculty Mentor, Dr. Raman Kumar sir, for his guidance and
   technical support throughout the project. We thank the Department of Electronics and
   Communication Engineering and the management of NMREC for providing essential resources and a
   supportive environment.
@@ -225,4 +225,5 @@ Once all components are tested and working correctly, the robot is ready for:
 - Laptop or PC – To run the dashboard and Python scripts for data processing.  
 
 - Stable Wi-Fi Connection – For wireless data transmission between ESP32 and dashboard.
+
 
