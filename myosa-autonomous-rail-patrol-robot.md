@@ -112,6 +112,7 @@ The robot intelligently identifies track defects, distinguishes between minor an
 4. Minor repairs (tightening bolts, welding cracks) are done automatically by the robotic arm.
 5.  For major defects, the robot stops and sends an alert to authorities.
 # Code used
+#include <myosa.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ESP32Servo.h>
@@ -398,6 +399,7 @@ Once all components are tested and working correctly, the robot is ready for:
 - Laptop or PC – To run the dashboard and Python scripts for data processing.  
 
 - Stable Wi-Fi Connection – For wireless data transmission between ESP32 and dashboard.
+
 
 
 
