@@ -111,7 +111,180 @@ The robot intelligently identifies track defects, distinguishes between minor an
 3. Live data is displayed on the dashboard with defect alerts and location.
 4. Minor repairs (tightening bolts, welding cracks) are done automatically by the robotic arm.
 5.  For major defects, the robot stops and sends an alert to authorities.
+# Code used
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <ESP32Servo.h>
+#include <Wire.h>
+#include "MPU6050.h"
+#include <TinyGPSPlus.h"
 
+/* ================= PIN CONFIG ================= */
+// Sensors
+#define IR_SENSOR 34
+
+// Motors
+#define MOTOR_L1 14
+#define MOTOR_L2 27
+#define MOTOR_R1 26
+#define MOTOR_R2 25
+
+// Robotic Arm (2 Servos)
+#define SERVO_BASE 13
+#define SERVO_ARM 12
+
+// Safety & Status
+#define BUZZER 33
+#define STATUS_LED 2        // ESP32 onboard LED
+#define EMERGENCY_BTN 32    // Manual emergency stop
+
+// GPS
+#define GPS_RX 16
+#define GPS_TX 17
+
+/* ================= WIFI ================= */
+const char* ssid = "YOUR_WIFI_NAME";
+const char* password = "YOUR_WIFI_PASSWORD";
+const char* serverURL = "http://YOUR_PC_IP:5000/data";
+
+/* ================= OBJECTS ================= */
+Servo servoBase, servoArm;
+MPU6050 mpu;
+TinyGPSPlus gps;
+HardwareSerial gpsSerial(2);
+
+/* ================= SAFETY FLAGS ================= */
+bool emergencyStop = false;
+
+/* ================= SETUP ================= */
+void setup() {
+  Serial.begin(9600);
+
+  pinMode(IR_SENSOR, INPUT);
+  pinMode(EMERGENCY_BTN, INPUT_PULLUP);
+
+  pinMode(MOTOR_L1, OUTPUT);
+  pinMode(MOTOR_L2, OUTPUT);
+  pinMode(MOTOR_R1, OUTPUT);
+  pinMode(MOTOR_R2, OUTPUT);
+
+  pinMode(BUZZER, OUTPUT);
+  pinMode(STATUS_LED, OUTPUT);
+
+  servoBase.attach(SERVO_BASE);
+  servoArm.attach(SERVO_ARM);
+  servoBase.write(0);
+  servoArm.write(0);
+
+  Wire.begin();
+  mpu.initialize();
+
+  gpsSerial.begin(9600, SERIAL_8N1, GPS_RX, GPS_TX);
+
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    digitalWrite(STATUS_LED, !digitalRead(STATUS_LED));
+    delay(500);
+  }
+
+  digitalWrite(STATUS_LED, HIGH); // System ready
+}
+
+/* ================= MOVEMENT ================= */
+void moveForward() {
+  digitalWrite(MOTOR_L1, HIGH);
+  digitalWrite(MOTOR_L2, LOW);
+  digitalWrite(MOTOR_R1, HIGH);
+  digitalWrite(MOTOR_R2, LOW);
+}
+
+void stopRobot() {
+  digitalWrite(MOTOR_L1, LOW);
+  digitalWrite(MOTOR_L2, LOW);
+  digitalWrite(MOTOR_R1, LOW);
+  digitalWrite(MOTOR_R2, LOW);
+}
+
+/* ================= ROBOTIC ARM ================= */
+void fixMinorDefect() {
+  servoBase.write(90);
+  delay(800);
+  servoArm.write(90);
+  delay(1500);
+  servoArm.write(0);
+  delay(800);
+  servoBase.write(0);
+}
+
+/* ================= DASHBOARD DATA ================= */
+void sendData(String defect, String severity, float lat, float lon) {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(serverURL);
+    http.addHeader("Content-Type", "application/json");
+
+    String payload = "{";
+    payload += "\"defect\":\"" + defect + "\",";
+    payload += "\"severity\":\"" + severity + "\",";
+    payload += "\"latitude\":" + String(lat, 6) + ",";
+    payload += "\"longitude\":" + String(lon, 6);
+    payload += "}";
+
+    http.POST(payload);
+    http.end();
+  }
+}
+
+/* ================= EMERGENCY HANDLER ================= */
+void handleEmergencyStop() {
+  stopRobot();
+  digitalWrite(BUZZER, HIGH);
+  digitalWrite(STATUS_LED, LOW);
+  sendData("Manual Emergency Stop", "Critical", 0.0, 0.0);
+  while (1);   // MYOSA-safe halt
+}
+
+/* ================= MAIN LOOP ================= */
+void loop() {
+
+  // Manual emergency stop (MYOSA safety)
+  if (digitalRead(EMERGENCY_BTN) == LOW) {
+    handleEmergencyStop();
+  }
+
+  // GPS Read
+  while (gpsSerial.available()) {
+    gps.encode(gpsSerial.read());
+  }
+
+  float latitude = gps.location.isValid() ? gps.location.lat() : 0.0;
+  float longitude = gps.location.isValid() ? gps.location.lng() : 0.0;
+
+  moveForward();
+
+  int irValue = digitalRead(IR_SENSOR);
+
+  int16_t ax, ay, az;
+  mpu.getAcceleration(&ax, &ay, &az);
+  float vibration = abs(ax) + abs(ay);
+
+  // -------- MINOR DEFECT --------
+  if (irValue == LOW && vibration < 15000) {
+    stopRobot();
+    sendData("Minor crack / Loose fastener", "Low", latitude, longitude);
+    fixMinorDefect();
+    delay(1500);
+  }
+
+  // -------- MAJOR DEFECT (FAIL-SAFE) --------
+  else if (vibration >= 15000) {
+    stopRobot();
+    digitalWrite(BUZZER, HIGH);
+    sendData("Major crack / Track damage", "High", latitude, longitude);
+    while (1);   // MYOSA-compliant safe stop
+  }
+
+  delay(400);
 # Tech stack
 ## 1. MYOSA Motherboard – ESP32
 The ESP32 MYOSA motherboard is the brain of your robot. It controls all the sensors and actuators, processes the data, and communicates with the dashboard via Wi-Fi. All other components connect to it, making it the central control unit.
@@ -225,6 +398,7 @@ Once all components are tested and working correctly, the robot is ready for:
 - Laptop or PC – To run the dashboard and Python scripts for data processing.  
 
 - Stable Wi-Fi Connection – For wireless data transmission between ESP32 and dashboard.
+
 
 
 
